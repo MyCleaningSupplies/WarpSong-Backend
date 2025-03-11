@@ -11,14 +11,28 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
-});
 
-app.use(cors());
+// Define allowed origins
+const allowedOrigins = [
+  "http://localhost:3000", // Development
+  "https://warpsong.vercel.app", // Production Vercel URL (replace with your actual URL)
+];
+
+// CORS options
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (allowedOrigins.includes(origin) || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"], // Include all common methods
+  credentials: true,
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Add this line to serve static files from the uploads directory
@@ -38,6 +52,19 @@ app.use("/api/stems", require("./routes/stems"));
 app.use("/api/remix", require("./routes/remix"));
 app.use("/api/mashup", require("./routes/mashup"));
 
+const io = socketIo(server, {
+  cors: {
+    origin: (origin, callback) => {
+      if (allowedOrigins.includes(origin) || !origin) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
 
 // Initialize socket handlers
 remixHandlers(io);
