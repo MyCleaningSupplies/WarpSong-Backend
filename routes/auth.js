@@ -3,12 +3,14 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const User = require('../models/User');
+const Stem = require('../models/Stem');
 const router = express.Router();
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage(); // Store image in memory before upload
 const upload = multer({ storage });
 
+// Update in routes/auth.js
 router.post('/register', async (req, res) => {
   try {
     let { username, password, qrCodeId, favoriteGenre, photo } = req.body;
@@ -31,8 +33,16 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: "Username already exists" });
     }
 
-    // Only check for QR code if one is provided
+    // If QR code is provided, validate it
     if (qrCodeId) {
+      // Check if QR code exists in stems
+      const stemExists = await Stem.findOne({ identifier: qrCodeId });
+      if (!stemExists) {
+        console.log("❌ Invalid QR code:", qrCodeId);
+        return res.status(400).json({ error: "Invalid QR code" });
+      }
+      
+      // Check if QR code is already assigned to another user
       const existingQR = await User.findOne({ qrCodeId });
       if (existingQR) {
         console.log("❌ QR code already assigned:", qrCodeId);
@@ -49,29 +59,54 @@ router.post('/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user
-    const user = new User({ 
-      username, 
-      password: hashedPassword, 
-      qrCodeId, 
-      favoriteGenre, 
-      photo 
-    });
+    // Create user object
+    const userData = {
+      username,
+      password: hashedPassword,
+      favoriteGenre,
+      photo
+    };
+    
+    // Only add qrCodeId if it's provided and valid
+    if (qrCodeId) {
+      userData.qrCodeId = qrCodeId;
+      
+      // Find the stem associated with this QR code to add to user's collection
+      const stem = await Stem.findOne({ identifier: qrCodeId });
+      if (stem) {
+        userData.stems = [stem._id];
+      }
+    } else {
+      userData.stems = [];
+    }
 
+    // Create new user
+    const user = new User(userData);
     await user.save();
     console.log("✅ New user created:", user);
 
-    // Generate JWT token - ADD THIS PART
+    // Generate JWT token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
-    // Include token in response - MODIFY THIS PART
-    res.json({ message: "User created successfully", user, token });
+    // Include token in response
+    res.json({ 
+      message: "User created successfully", 
+      user: {
+        id: user._id,
+        username: user.username,
+        qrCodeId: user.qrCodeId,
+        favoriteGenre: user.favoriteGenre,
+        stems: user.stems
+      }, 
+      token 
+    });
 
   } catch (err) {
     console.error("❌ Server Error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 // ✅ Login endpoint

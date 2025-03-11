@@ -32,6 +32,7 @@ mongoose
 // Routes
 app.use("/api/user", require("./routes/user"));
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/qrcode", require("./routes/qrcode"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/stems", require("./routes/stems"));
 app.use("/api/remix", require("./routes/remix"));
