@@ -141,6 +141,7 @@ router.get("/profile", authMiddleware, async (req, res) => {
           streak: user.streak,
           rank: user.rank,
           achievements: user.achievements,
+          stems: user.stems,  // Include the actual stems array
           stemsCollected: user.stems.length,
           createdAt: user.createdAt
       });
