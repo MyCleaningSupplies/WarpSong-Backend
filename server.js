@@ -36,6 +36,8 @@ app.use("/api/qrcode", require("./routes/qrcode"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/stems", require("./routes/stems"));
 app.use("/api/remix", require("./routes/remix"));
+app.use("/api/mashup", require("./routes/mashup"));
+
 
 // Initialize socket handlers
 remixHandlers(io);

@@ -5,6 +5,8 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   qrCodeId: { type: String, unique: true },
   stems: [{ type: mongoose.Schema.Types.ObjectId, ref: "Stem" }],
+  mashups: [{ type: mongoose.Schema.Types.ObjectId, ref: "Mashup" }],  // <--- Add This
+
   level: { type: Number, default: 1 }, // ✅ New: Leveling system
   xp: { type: Number, default: 0 }, // ✅ XP for leveling
   streak: { type: Number, default: 0 }, // ✅ Daily streak
