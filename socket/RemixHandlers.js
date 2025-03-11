@@ -1,6 +1,6 @@
 // remixHandlers.js
-const sessions = new Map(); 
-// Structure: { sessionCode: { users: [], readyUsers: [] } }
+const sessions = new Map();
+// sessions structure: { sessionCode: { users: [], readyUsers: [] } }
 
 module.exports = (io) => {
   io.on("connection", (socket) => {
@@ -16,7 +16,7 @@ module.exports = (io) => {
         sessionState.users.push(userId);
       }
       socket.join(sessionCode);
-      // Emit full user list
+      // Emit full user list to everyone in the room:
       io.to(sessionCode).emit("user-joined", {
         userId,
         users: sessionState.users,
@@ -40,7 +40,7 @@ module.exports = (io) => {
 
     socket.on("select-stem", ({ sessionCode, userId, stemId, stemType, stem }) => {
       console.log(`User ${userId} selected stem ${stemId} (${stemType}) in session ${sessionCode}`);
-      // Broadcast the stem selection to all clients in the room
+      // Broadcast the stem selection to everyone in the room
       io.to(sessionCode).emit("stem-selected", { userId, stemId, stemType, stem });
     });
 
@@ -49,7 +49,7 @@ module.exports = (io) => {
       if (sessionState && !sessionState.readyUsers.includes(userId)) {
         sessionState.readyUsers.push(userId);
       }
-      // Emit updated ready users list
+      // Emit updated readyUsers list:
       io.to(sessionCode).emit("user-ready-update", {
         readyUsers: sessionState ? sessionState.readyUsers : [],
       });
@@ -68,7 +68,7 @@ module.exports = (io) => {
 
     socket.on("disconnect", () => {
       console.log("👋 User disconnected:", socket.id);
-      // Optionally, handle removal from sessions here if you can map socket.id to a session.
+      // Optionally: remove socket.id from sessions if you can map it.
     });
   });
 };
