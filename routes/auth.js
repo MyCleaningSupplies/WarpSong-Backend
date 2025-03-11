@@ -110,36 +110,43 @@ router.post('/register', async (req, res) => {
 
 
 // ✅ Login endpoint
+// Find the login route and update it to include isAdmin in the token
 router.post('/login', async (req, res) => {
-    try {
-      let { username, password } = req.body;
-  
-      if (!username || !password) {
-        return res.status(400).json({ error: "Username and password are required" });
-      }
-  
-      // Convert username to lowercase
-      username = username.toLowerCase();
-  
-      const user = await User.findOne({ username });
-      if (!user) {
-        return res.status(400).json({ error: "User not found" });
-      }
-  
-      // Validate password
-      const validPassword = await bcrypt.compare(password, user.password);
-      if (!validPassword) {
-        return res.status(400).json({ error: "Incorrect password" });
-      }
-  
-      // Generate JWT token
-      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
-
-      res.json({ token, user });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: "Server error" });
+  try {
+    const { username, password } = req.body;
+    
+    // Find the user
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
+    
+    // Compare passwords
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    
+    // Create JWT token with isAdmin flag
+    const token = jwt.sign(
+      { 
+        id: user._id, 
+        isAdmin: user.isAdmin || false 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    // Return token and isAdmin status
+    res.json({ 
+      token,
+      isAdmin: user.isAdmin || false
+    });
+    
+  } catch (error) {
+    console.error("❌ Login error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 module.exports = router;

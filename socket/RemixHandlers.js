@@ -58,8 +58,49 @@ socket.on('user-ready', ({ sessionCode, userId }) => {
       sessionState.isPlaying = isPlaying;
       sessions.set(sessionCode, sessionState);
       
-      // Broadcast to all clients in the session
-      socket.to(sessionCode).emit('sync-playback', isPlaying);
+      // Broadcast to all clients in the session immediately
+      io.to(sessionCode).emit('sync-playback', { 
+        isPlaying,
+        timestamp: Date.now() // Add timestamp for synchronization
+      });
+    });
+
+    // Add a new handler for playback readiness
+    socket.on('playback-ready', ({ sessionCode, userId, timestamp }) => {
+      console.log(`🎵 User ${userId} is ready for playback in session ${sessionCode}`);
+      
+      // Store this user as ready in the session state
+      const sessionState = sessions.get(sessionCode) || {};
+      sessionState.readyUsers = sessionState.readyUsers || new Set();
+      sessionState.readyUsers.add(userId);
+      sessions.set(sessionCode, sessionState);
+      
+      // Notify all clients that this user is ready for playback
+      io.to(sessionCode).emit('user-playback-ready', { userId });
+      
+      // If there's an active playback state, send it immediately
+      if (sessionState.isPlaying) {
+        socket.emit('sync-playback', { 
+          isPlaying: true,
+          timestamp: Date.now()
+        });
+      }
+    });
+
+    // Update the playback control handler to include timestamp
+    socket.on('playback-control', ({ sessionCode, isPlaying, timestamp }) => {
+      console.log(`🎵 Playback ${isPlaying ? 'started' : 'stopped'} in session ${sessionCode}`);
+      
+      // Store the session's playback state
+      const sessionState = sessions.get(sessionCode) || {};
+      sessionState.isPlaying = isPlaying;
+      sessions.set(sessionCode, sessionState);
+      
+      // Broadcast to all clients in the session INCLUDING the sender
+      io.to(sessionCode).emit('sync-playback', { 
+        isPlaying,
+        timestamp: timestamp || Date.now() // Use provided timestamp or current time
+      });
     });
 
     // Stem selection handler

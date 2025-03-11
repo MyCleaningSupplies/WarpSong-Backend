@@ -91,5 +91,56 @@ router.get("/get-stems", authMiddleware, async (req, res) => {
     }
   });
   
+// Add this new route for deleting stems
+// Update the delete-stem route
+router.delete('/delete-stem/:id', authMiddleware, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user.isAdmin) {
+      console.log("❌ Unauthorized delete attempt by user:", req.user.id);
+      return res.status(403).json({ error: "Unauthorized. Admin access required." });
+    }
+
+    const stemId = req.params.id;
+    
+    // Find the stem to get its Cloudinary public_id
+    const stem = await Stem.findById(stemId);
+    
+    if (!stem) {
+      return res.status(404).json({ error: "Stem not found" });
+    }
+    
+    // Delete from Cloudinary if fileUrl exists
+    if (stem.fileUrl) {
+      try {
+        // Extract public_id from the Cloudinary URL
+        const publicId = stem.fileUrl.split('/').pop().split('.')[0];
+        if (publicId) {
+          await cloudinary.uploader.destroy(`warpSong_stems/${publicId}`, { resource_type: 'video' });
+          console.log(`✅ Deleted file from Cloudinary: ${publicId}`);
+        }
+      } catch (cloudinaryError) {
+        console.error("❌ Error deleting from Cloudinary:", cloudinaryError);
+        // Continue with database deletion even if Cloudinary deletion fails
+      }
+    }
+    
+    // Delete from database
+    await Stem.findByIdAndDelete(stemId);
+    
+    // Also remove references to this stem from all users
+    await User.updateMany(
+      { stems: stemId },
+      { $pull: { stems: stemId } }
+    );
+    
+    console.log(`✅ Stem deleted successfully: ${stemId}`);
+    res.json({ message: "Stem deleted successfully" });
+    
+  } catch (error) {
+    console.error("❌ Error deleting stem:", error);
+    res.status(500).json({ error: "Server error", details: error.message });
+  }
+});
 
 module.exports = router;

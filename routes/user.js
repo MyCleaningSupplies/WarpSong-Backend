@@ -183,4 +183,45 @@ router.post("/daily-login", authMiddleware, async (req, res) => {
   }
 });
 
+// Add this new route to verify admin status
+router.get("/verify-admin", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    res.json({ isAdmin: user.isAdmin || false });
+  } catch (error) {
+    console.error("Error verifying admin status:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Add a simple endpoint to make a user an admin (you should secure this in production)
+router.post("/make-admin", async (req, res) => {
+  try {
+    const { username, secretKey } = req.body;
+    
+    // Simple security check - you should use a more secure method in production
+    if (secretKey !== "warpsong_admin_secret") {
+      return res.status(403).json({ error: "Invalid secret key" });
+    }
+    
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    user.isAdmin = true;
+    await user.save();
+    
+    console.log(`✅ User ${username} is now an admin`);
+    res.json({ message: `User ${username} is now an admin` });
+  } catch (error) {
+    console.error("❌ Error making user admin:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 module.exports = router;
