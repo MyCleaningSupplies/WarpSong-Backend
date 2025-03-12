@@ -1,12 +1,15 @@
 const router = require("express").Router();
 const User = require("../models/User");
 const Stem = require("../models/Stem");
-const Mashup = require("../models/Mashup"); // Ensure you import the Mashup model
+const Mashup = require("../models/Mashup");
 const authMiddleware = require("../middleware/authMiddleware");
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+
+// Level thresholds configuration
+const LEVEL_THRESHOLDS = [0, 500, 1200, 2500, 4000, 6000, 8500, 11500, 15000, 20000];
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -58,6 +61,37 @@ router.post("/add-stem", authMiddleware, async (req, res) => {
       user.stems.push(stemId);
       await user.save();
 
+      // Award XP for collecting a stem
+      let xpUpdate = null;
+      try {
+        const oldLevel = user.level;
+        user.xp += 50; // 50 XP for collecting a stem
+        
+        // Check if user leveled up
+        let newLevel = oldLevel;
+        for (let i = oldLevel; i < LEVEL_THRESHOLDS.length; i++) {
+          if (user.xp >= LEVEL_THRESHOLDS[i]) {
+            newLevel = i + 1;
+          } else {
+            break;
+          }
+        }
+        
+        user.level = newLevel;
+        await user.save();
+        
+        xpUpdate = {
+          xp: user.xp,
+          level: user.level,
+          leveledUp: newLevel > oldLevel,
+          xpGained: 50
+        };
+        
+        console.log(`✅ User ${user.username} earned 50 XP for collecting a stem. New XP: ${user.xp}, Level: ${user.level}`);
+      } catch (xpError) {
+        console.error("❌ Error updating XP:", xpError);
+      }
+
       console.log(`✅ Added stem ${stemId} to user ${user.username}'s collection`);
 
       res.json({
@@ -65,7 +99,8 @@ router.post("/add-stem", authMiddleware, async (req, res) => {
         user: {
           id: user._id,
           stems: user.stems
-        }
+        },
+        gamification: xpUpdate
       });
     } catch (err) {
       console.error("❌ Error adding stem to collection:", err);
@@ -128,24 +163,30 @@ router.post('/upload-photo', upload.single('photo'), async (req, res) => {
   }
 });
 
-// ✅ Get User Profile
+// ✅ Get User Profile with gamification data
 router.get("/profile", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .populate("stems")
-      .populate("mashups"); // <-- Populate the mashups
+      .populate("mashups");
 
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Calculate current level XP and next level XP for progress bar
+    const currentLevelXP = user.level > 1 ? LEVEL_THRESHOLDS[user.level - 1] : 0;
+    const nextLevelXP = LEVEL_THRESHOLDS[user.level] || LEVEL_THRESHOLDS[user.level - 1];
 
     res.json({
       username: user.username,
       level: user.level,
       xp: user.xp,
+      currentLevelXP,
+      nextLevelXP,
       streak: user.streak,
       rank: user.rank,
-      achievements: user.achievements,
+      achievements: user.achievements || [],
       stems: user.stems,
-      mashups: user.mashups,  // <-- Include the mashups
+      mashups: user.mashups,
       stemsCollected: user.stems.length,
       createdAt: user.createdAt
     });
@@ -155,6 +196,7 @@ router.get("/profile", authMiddleware, async (req, res) => {
   }
 });
 
+// Enhanced daily login with rewards
 router.post("/daily-login", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -164,11 +206,65 @@ router.post("/daily-login", authMiddleware, async (req, res) => {
     const lastLogin = user.lastLogin ? new Date(user.lastLogin).setHours(0, 0, 0, 0) : null;
 
     if (lastLogin && today === lastLogin) {
-      return res.json({ message: "Already logged in today!", streak: user.streak });
+      return res.json({ 
+        message: "Already logged in today!", 
+        streak: user.streak 
+      });
     }
+
+    let reward = null;
 
     if (lastLogin && today - lastLogin === 86400000) {
       user.streak += 1; // ✅ Increase streak if logged in on consecutive days
+      
+      // Check for streak rewards
+      if (user.streak === 3) {
+        reward = { 
+          type: 'premium_stem', 
+          message: 'You unlocked a free premium stem!' 
+        };
+      } else if (user.streak === 7) {
+        // Award 500 XP bonus for 7-day streak
+        user.xp += 500;
+        reward = { 
+          type: 'xp_bonus', 
+          amount: 500, 
+          message: 'You earned a 500 XP bonus!' 
+        };
+        
+        // Check if user leveled up from the XP bonus
+        const oldLevel = user.level;
+        let newLevel = oldLevel;
+        for (let i = oldLevel; i < LEVEL_THRESHOLDS.length; i++) {
+          if (user.xp >= LEVEL_THRESHOLDS[i]) {
+            newLevel = i + 1;
+          } else {
+            break;
+          }
+        }
+        user.level = newLevel;
+        
+        if (newLevel > oldLevel) {
+          reward.levelUp = {
+            oldLevel,
+            newLevel
+          };
+        }
+      } else if (user.streak === 14) {
+        // Award streak master achievement
+        if (!user.achievements) {
+          user.achievements = [];
+        }
+        
+        if (!user.achievements.includes('streak_master')) {
+          user.achievements.push('streak_master');
+          reward = { 
+            type: 'achievement', 
+            achievement: 'streak_master', 
+            message: 'You earned the Streak Master badge!' 
+          };
+        }
+      }
     } else {
       user.streak = 1; // ✅ Reset streak if missed a day
     }
@@ -176,7 +272,16 @@ router.post("/daily-login", authMiddleware, async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    res.json({ message: "Daily streak updated!", streak: user.streak });
+    console.log(`✅ User ${user.username} updated daily streak: ${user.streak} days`);
+    if (reward) {
+      console.log(`✅ User ${user.username} received reward: ${reward.type}`);
+    }
+
+    res.json({ 
+      message: "Daily streak updated!", 
+      streak: user.streak,
+      reward
+    });
   } catch (error) {
     console.error("❌ Error updating streak:", error);
     res.status(500).json({ error: "Server error" });

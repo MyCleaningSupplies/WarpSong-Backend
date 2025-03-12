@@ -5,7 +5,7 @@ const dotenv = require("dotenv");
 const http = require("http");
 const socketIo = require("socket.io");
 const remixHandlers = require("./socket/RemixHandlers");
-const path = require("path"); // Add this for path operations
+const path = require("path");
 
 dotenv.config();
 
@@ -14,8 +14,8 @@ const server = http.createServer(app);
 
 // Define allowed origins
 const allowedOrigins = [
-  "http://localhost:3000", // Development
-  "https://warpsong.vercel.app", // Production Vercel URL (replace with your actual URL)
+  "http://localhost:3000",
+  "https://warpsong.vercel.app",
 ];
 
 // CORS options
@@ -27,7 +27,7 @@ const corsOptions = {
       callback(new Error("Not allowed by CORS"));
     }
   },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"], // Include all common methods
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   credentials: true,
 };
 
@@ -51,6 +51,7 @@ app.use("/api/admin", require("./routes/admin"));
 app.use("/api/stems", require("./routes/stems"));
 app.use("/api/remix", require("./routes/remix"));
 app.use("/api/mashup", require("./routes/mashup"));
+app.use("/api/gamification", require("./routes/gamification")); // Add this line
 
 const io = socketIo(server, {
   cors: {

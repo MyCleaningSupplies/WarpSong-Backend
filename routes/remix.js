@@ -2,13 +2,14 @@ const express = require("express");
 const router = express.Router();
 const auth = require("../middleware/authMiddleware");
 const RemixSession = require("../models/RemixSession");
-const generateSessionCode = require('../utils/generateSessionCode'); // Import the utility function
+const generateSessionCode = require('../utils/generateSessionCode');
+const { updateUserXP } = require('../utils/gamification');
 
 // Create a new remix session
 router.post("/create", auth, async (req, res) => {
   try {
     const userId = req.user.id;
-    let sessionCode = generateSessionCode(); // Generate a unique session code
+    let sessionCode = generateSessionCode();
 
     // Ensure the generated code is unique by checking if it already exists
     while (await RemixSession.exists({ sessionCode })) {
@@ -21,14 +22,13 @@ router.post("/create", auth, async (req, res) => {
     });
 
     console.log(`✅ Session created with code: ${sessionCode}`);
-    res.status(200).json({ sessionCode }); // Send the session code back to the client
+    res.status(200).json({ sessionCode });
   } catch (err) {
     console.error("❌ Error in /remix/create:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// Join or create a remix session
 // Join or create a remix session
 router.post("/join", auth, async (req, res) => {
   try {
@@ -38,23 +38,31 @@ router.post("/join", auth, async (req, res) => {
     let session = await RemixSession.findOne({ sessionCode })
       .populate("users stems.stem");
 
+    let xpUpdate = null; // Variable to hold XP update result
+
     if (session) {
-      // Add the console log here
-      console.log(`Checking if user ${userId} is in session with users:`, 
+      console.log(`Checking if user ${userId} is in session with users:`,
         session.users.map(u => typeof u === 'object' ? u._id.toString() : u.toString())
       );
-      
+
       // Check if user is already in the session by comparing IDs
-      const userExists = session.users.some(user => 
+      const userExists = session.users.some(user =>
         user._id?.toString() === userId || user.toString() === userId
       );
-      
+
       console.log(`User exists in session: ${userExists}`);
-      
+
       if (!userExists && session.users.length < 4) {
         console.log(`Adding user ${userId} to session ${sessionCode}`);
         session.users.push(userId);
         await session.save();
+
+        // Award XP for joining a session
+        try {
+          xpUpdate = await updateUserXP(userId, 25, 'join_session');
+        } catch (xpError) {
+          console.error("❌ Error updating XP:", xpError);
+        }
       } else {
         console.log(`User ${userId} already in session or session full`);
       }
@@ -66,14 +74,17 @@ router.post("/join", auth, async (req, res) => {
       });
     }
 
-    res.json(session);
+    const response = { session };
+    if (xpUpdate) {
+      response.gamification = xpUpdate; // Attach XP update data to response
+    }
+
+    res.json(response); // Send session and gamification data
   } catch (err) {
     console.error("❌ Error in /remix/join:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
-
-
 
 // Select a stem in a session
 router.post("/select-stem", auth, async (req, res) => {
@@ -89,7 +100,7 @@ router.post("/select-stem", auth, async (req, res) => {
     const existingEntry = session.stems.find(
       (s) => s.user.toString() === userId
     );
-    
+
     if (existingEntry) {
       existingEntry.stem = stemId;
     } else {
